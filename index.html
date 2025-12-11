@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PZEM-017 Energy Monitor</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-dark: #0f1016;
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --border-light: rgba(255, 255, 255, 0.08);
+            
+            /* Modern Neon Palette */
+            --c-volt: #4facfe;    /* Blue Gradient Start */
+            --c-volt-g: #00f2fe;  /* Blue Gradient End */
+            
+            --c-amp: #ff0844;     /* Red Gradient Start */
+            --c-amp-g: #ffb199;   /* Red Gradient End */
+            
+            --c-watt: #f6d365;    /* Orange Gradient Start */
+            --c-watt-g: #fda085;  /* Orange Gradient End */
+            
+            --c-nrg: #43e97b;     /* Green Gradient Start */
+            --c-nrg-g: #38f9d7;   /* Green Gradient End */
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            background-color: var(--bg-dark);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(79, 172, 254, 0.08) 0%, transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(255, 8, 68, 0.08) 0%, transparent 50%);
+            color: #ffffff;
+            font-family: 'Outfit', sans-serif; /* Font lebih modern & clean */
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* --- HEADER --- */
+        header {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 40px;
+            padding: 15px 25px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border-light);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .brand {
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.5rem;
+            margin: 0;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(90deg, #fff, #aeb2b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 0.75rem;
+            color: #666;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0,0,0,0.3);
+            padding: 8px 16px;
+            border-radius: 30px;
+            border: 1px solid var(--border-light);
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #444;
+            transition: 0.3s;
+        }
+        .dot.active { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
+
+        /* --- DASHBOARD GRID --- */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 25px;
+            width: 100%;
+            max-width: 1200px;
+            margin-bottom: 25px;
+        }
+
+        /* Modern Card Styling */
+        .card {
+            background: var(--card-bg);
+            border-radius: 24px;
+            padding: 25px;
+            position: relative;
+            border: 1px solid var(--border-light);
+            backdrop-filter: blur(20px);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 160px;
+        }
+
+        .card:hover {
+            transform: translateY(-5px) scale(1.01);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        /* Gradient Background Accents */
+        .card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, var(--accent-color) 0%, transparent 60%);
+            opacity: 0.1;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .card:hover::before { opacity: 0.2; }
+
+        /* Card Colors Definition */
+        .card.volt { --accent-color: var(--c-volt); --text-grad: linear-gradient(135deg, var(--c-volt), var(--c-volt-g)); }
+        .card.amp  { --accent-color: var(--c-amp);  --text-grad: linear-gradient(135deg, var(--c-amp), var(--c-amp-g)); }
+        .card.watt { --accent-color: var(--c-watt); --text-grad: linear-gradient(135deg, var(--c-watt), var(--c-watt-g)); }
+        .card.energy { --accent-color: var(--c-nrg); --text-grad: linear-gradient(135deg, var(--c-nrg), var(--c-nrg-g)); }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .card-title {
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.6);
+            font-weight: 500;
+        }
+
+        .icon-box {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+            color: white;
+        }
+        .card.volt .icon-box { color: var(--c-volt); background: rgba(79, 172, 254, 0.15); }
+        .card.amp .icon-box { color: var(--c-amp); background: rgba(255, 8, 68, 0.15); }
+        .card.watt .icon-box { color: var(--c-watt); background: rgba(246, 211, 101, 0.15); }
+        .card.energy .icon-box { color: var(--c-nrg); background: rgba(67, 233, 123, 0.15); }
+
+        .value-wrapper {
+            position: relative;
+            z-index: 2;
+        }
+
+        .value {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2.8rem;
+            font-weight: 700;
+            line-height: 1;
+            background: var(--text-grad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 15px var(--accent-color)); /* Glow effect */
+        }
+
+        .unit {
+            font-size: 1.1rem;
+            color: rgba(255,255,255,0.4);
+            margin-left: 5px;
+            font-weight: 400;
+        }
+
+        /* --- CHARTS --- */
+        .charts-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .chart-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-light);
+            border-radius: 24px;
+            padding: 20px;
+            height: 350px;
+            position: relative;
+        }
+
+        .chart-title {
+            position: absolute;
+            top: 20px;
+            left: 25px;
+            font-size: 1rem;
+            color: rgba(255,255,255,0.8);
+            font-weight: 600;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            h1 { font-size: 1.2rem; }
+            .value { font-size: 2.2rem; }
+            .charts-container { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand">
+            <h1>PZEM-017 DASHBOARD</h1>
+            <span class="subtitle">DC Power Monitor System</span>
+        </div>
+        <div class="status-pill">
+            <div id="status-dot" class="dot"></div>
+            <span id="status-text">OFFLINE</span>
+        </div>
+    </header>
+
+    <div class="dashboard-grid">
+        <div class="card volt">
+            <div class="card-header">
+                <span class="card-title">VOLTAGE</span>
+                <div class="icon-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+                </div>
+            </div>
+            <div class="value-wrapper">
+                <span class="value" id="val-voltage">0.00</span>
+                <span class="unit">V</span>
+            </div>
+        </div>
+
+        <div class="card amp">
+            <div class="card-header">
+                <span class="card-title">CURRENT</span>
+                <div class="icon-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v12"></path><path d="M8 12h8"></path></svg>
+                </div>
+            </div>
+            <div class="value-wrapper">
+                <span class="value" id="val-current">0.00</span>
+                <span class="unit">A</span>
+            </div>
+        </div>
+
+        <div class="card watt">
+            <div class="card-header">
+                <span class="card-title">ACTIVE POWER</span>
+                <div class="icon-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                </div>
+            </div>
+            <div class="value-wrapper">
+                <span class="value" id="val-power">0.0</span>
+                <span class="unit">W</span>
+            </div>
+        </div>
+
+        <div class="card energy">
+            <div class="card-header">
+                <span class="card-title">TOTAL ENERGY</span>
+                <div class="icon-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                </div>
+            </div>
+            <div class="value-wrapper">
+                <span class="value" id="val-energy">0.00</span>
+                <span class="unit">Wh</span> </div>
+        </div>
+    </div>
+
+    <div class="charts-container">
+        <div class="chart-card">
+            <div class="chart-title">Load Analytics (V / A)</div>
+            <canvas id="comboChart"></canvas>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">Power Usage (Watts)</div>
+            <canvas id="powerChart"></canvas>
+        </div>
+    </div>
+
+    <footer style="margin-top: 40px; color: #444; font-size: 0.8rem; text-align: center;">
+        <p>Connected via WebSockets to PZEM-017 Node</p>
+    </footer>
+
+    <script>
+        // --- KONFIGURASI MQTT ---
+        const MQTT_BROKER = "test.mosquitto.org";
+        const MQTT_PORT = 8080; 
+        const MQTT_PATH = "/mqtt";
+        const TOPIC_SUB = "iot/dc/data101/all_data";
+        
+        const clientID = "web_monitor_" + Math.random().toString(16).substr(2, 8);
+        const client = new Paho.MQTT.Client(MQTT_BROKER, MQTT_PORT, MQTT_PATH, clientID);
+
+        // --- CHART JS SETUP ---
+        const MAX_POINTS = 50;
+        const initialLabels = Array(MAX_POINTS).fill('');
+        const initialData = Array(MAX_POINTS).fill(null);
+
+        Chart.defaults.color = 'rgba(255, 255, 255, 0.4)';
+        Chart.defaults.font.family = "'Outfit', sans-serif";
+        Chart.defaults.scale.grid.color = 'rgba(255, 255, 255, 0.03)';
+
+        // Chart 1: V & A
+        const ctxCombo = document.getElementById('comboChart').getContext('2d');
+        
+        // Gradient for Voltage
+        let gradV = ctxCombo.createLinearGradient(0, 0, 0, 400);
+        gradV.addColorStop(0, 'rgba(79, 172, 254, 0.4)');
+        gradV.addColorStop(1, 'rgba(79, 172, 254, 0)');
+
+        // Gradient for Current
+        let gradA = ctxCombo.createLinearGradient(0, 0, 0, 400);
+        gradA.addColorStop(0, 'rgba(255, 8, 68, 0.4)');
+        gradA.addColorStop(1, 'rgba(255, 8, 68, 0)');
+
+        const comboChart = new Chart(ctxCombo, {
+            type: 'line',
+            data: {
+                labels: [...initialLabels],
+                datasets: [
+                    {
+                        label: 'Voltage',
+                        data: [...initialData],
+                        borderColor: '#4facfe',
+                        backgroundColor: gradV,
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 0,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Current',
+                        data: [...initialData],
+                        borderColor: '#ff0844',
+                        backgroundColor: gradA,
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 0,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top', align: 'end', labels: { usePointStyle: true, boxWidth: 8 } } },
+                layout: { padding: { top: 30 } },
+                scales: {
+                    x: { display: false },
+                    y: { type: 'linear', display: true, position: 'left', border: {display: false} },
+                    y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false }, border: {display: false} }
+                }
+            }
+        });
+
+        // Chart 2: Power
+        const ctxPower = document.getElementById('powerChart').getContext('2d');
+        let gradW = ctxPower.createLinearGradient(0, 0, 0, 400);
+        gradW.addColorStop(0, 'rgba(246, 211, 101, 0.4)');
+        gradW.addColorStop(1, 'rgba(246, 211, 101, 0)');
+
+        const powerChart = new Chart(ctxPower, {
+            type: 'line',
+            data: {
+                labels: [...initialLabels],
+                datasets: [{
+                    label: 'Power (W)',
+                    data: [...initialData],
+                    borderColor: '#f6d365',
+                    backgroundColor: gradW,
+                    borderWidth: 2,
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } }, // Judul sudah di HTML
+                layout: { padding: { top: 30 } },
+                scales: {
+                    x: { display: false },
+                    y: { border: {display: false} }
+                }
+            }
+        });
+
+        // --- LOGIC ---
+        function onConnect() {
+            console.log("MQTT Connected");
+            document.getElementById("status-text").innerText = "LIVE DATA";
+            document.getElementById("status-dot").classList.add("active");
+            document.getElementById("status-text").style.color = "#00ff88";
+            client.subscribe(TOPIC_SUB);
+        }
+
+        function onConnectionLost(responseObject) {
+            console.log("Lost: " + responseObject.errorMessage);
+            document.getElementById("status-text").innerText = "RECONNECTING";
+            document.getElementById("status-dot").classList.remove("active");
+            document.getElementById("status-text").style.color = "#ff4444";
+            setTimeout(connectMQTT, 3000);
+        }
+
+        function onMessageArrived(message) {
+            try {
+                const payload = JSON.parse(message.payloadString);
+                
+                // Animate Numbers (Simple Update)
+                document.getElementById('val-voltage').innerText = payload.voltage.toFixed(2);
+                document.getElementById('val-current').innerText = payload.current.toFixed(3);
+                document.getElementById('val-power').innerText = payload.power.toFixed(1);
+                
+                // Energy formatting
+                // Asumsi payload.energy dalam Wh atau kWh, sesuaikan label unit di HTML
+                document.getElementById('val-energy').innerText = payload.energy.toFixed(3);
+
+                // Update Charts
+                updateChart(comboChart, payload.voltage, payload.current);
+                updateChartSingle(powerChart, payload.power);
+
+            } catch (e) {
+                console.error("Data Error", e);
+            }
+        }
+
+        function updateChart(chart, val1, val2) {
+            chart.data.labels.push(''); 
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.push(val1);
+            chart.data.datasets[0].data.shift();
+            chart.data.datasets[1].data.push(val2);
+            chart.data.datasets[1].data.shift();
+            chart.update('none'); 
+        }
+
+        function updateChartSingle(chart, val) {
+            chart.data.labels.push('');
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.push(val);
+            chart.data.datasets[0].data.shift();
+            chart.update('none');
+        }
+
+        function connectMQTT() {
+            document.getElementById("status-text").innerText = "CONNECTING";
+            document.getElementById("status-text").style.color = "#aaa";
+            client.connect({
+                onSuccess: onConnect,
+                onFailure: (e) => {
+                    console.log("Failed", e);
+                    setTimeout(connectMQTT, 3000);
+                },
+                useSSL: false,
+                keepAliveInterval: 30
+            });
+        }
+
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+        window.onload = connectMQTT;
+
+    </script>
+</body>
+</html>
